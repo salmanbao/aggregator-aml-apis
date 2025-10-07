@@ -9,7 +9,7 @@ import {
   SwapResult,
   AggregatorType,
 } from '../models/swap-request.model';
-import { isNativeToken, getNativeTokenAddress } from '../../shared/utils/chain.utils';
+import { isNativeToken, getNativeTokenAddress, getChainConfig } from '../../shared/utils/chain.utils';
 import {
   validatePrivateKey,
   validateTokenAddress,
@@ -18,7 +18,7 @@ import {
   validateSlippage,
   validateDeadline,
 } from '../../shared/utils/validation.utils';
-import { createWallet, getChainConfig } from '../../shared/utils/ethereum.utils';
+import { createWallet } from '../../shared/utils/ethereum.utils';
 
 /**
  * Swap execution service with pre-flight checks
@@ -98,7 +98,7 @@ export class SwapExecutionService {
       const receipt = await this.walletService.waitForTransactionConfirmation(chainId, txHash);
 
       // Parse result
-      const result = await this.parseSwapResult(receipt, quote, txHash);
+      const result = await this.parseSwapResult(receipt, quote, txHash, finalRecipient);
 
       this.logger.log(`Swap executed successfully: ${txHash}`);
       return result;
@@ -257,7 +257,7 @@ export class SwapExecutionService {
 
     if (isApprovalNeeded) {
       this.logger.log('Approval needed, executing approval transaction...');
-      const approvalTxHash = await this.approvalService.executeApproval(
+      const approvalResult = await this.approvalService.executeApproval(
         chainId,
         privateKey,
         sellToken,
@@ -266,8 +266,8 @@ export class SwapExecutionService {
       );
 
       // Wait for approval confirmation
-      await this.walletService.waitForTransactionConfirmation(chainId, approvalTxHash);
-      this.logger.log(`Approval confirmed: ${approvalTxHash}`);
+      await this.walletService.waitForTransactionConfirmation(chainId, approvalResult.transactionHash);
+      this.logger.log(`Approval confirmed: ${approvalResult.transactionHash}`);
     }
   }
 
@@ -278,6 +278,7 @@ export class SwapExecutionService {
     receipt: ethers.TransactionReceipt,
     quote: SwapQuote,
     txHash: string,
+    recipient: string,
   ): Promise<SwapResult> {
     const gasUsed = receipt.gasUsed.toString();
     const gasPrice = receipt.gasPrice?.toString() || '0';
@@ -285,7 +286,7 @@ export class SwapExecutionService {
     // Parse token transfers to get actual buy amount
     const transfers = this.walletService.parseTransactionReceipt(receipt, quote.buyToken);
     const buyTransfer = transfers.find(
-      (transfer) => transfer.to.toLowerCase() === quote.recipient?.toLowerCase(),
+      (transfer) => transfer.to.toLowerCase() === recipient.toLowerCase(),
     );
 
     const actualBuyAmount = buyTransfer ? buyTransfer.amount.toString() : quote.buyAmount;
