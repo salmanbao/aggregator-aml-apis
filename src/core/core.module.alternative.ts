@@ -8,6 +8,7 @@ import { RateLimitGuard } from './guards/rate-limit.guard';
 
 /**
  * Core module that provides global filters, interceptors, pipes, and guards
+ * Alternative implementation without exports (recommended for global providers)
  */
 @Global()
 @Module({
@@ -33,6 +34,6 @@ import { RateLimitGuard } from './guards/rate-limit.guard';
       useClass: RateLimitGuard,
     },
   ],
-  // No exports needed for global providers registered via APP_* tokens
+  // No exports needed for global providers
 })
 export class CoreModule {}

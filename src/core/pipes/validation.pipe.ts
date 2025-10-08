@@ -17,8 +17,13 @@ export class CustomValidationPipe implements PipeTransform<any> {
       return value;
     }
 
-    const object = plainToClass(metatype, value);
-    const errors = await validate(object);
+    const object = plainToClass(metatype, value, {
+      enableImplicitConversion: true,
+    });
+    const errors = await validate(object, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
 
     if (errors.length > 0) {
       const errorMessages = this.buildErrorMessage(errors);
@@ -28,7 +33,7 @@ export class CustomValidationPipe implements PipeTransform<any> {
       });
     }
 
-    return value;
+    return object; // Return transformed object instead of original value
   }
 
   private toValidate(metatype: Function): boolean {

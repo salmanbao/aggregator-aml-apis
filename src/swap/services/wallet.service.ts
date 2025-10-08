@@ -6,13 +6,11 @@ import {
   createWallet,
   getERC20Interface,
   estimateGas,
-  getGasPrice,
   waitForTransaction,
   parseTokenTransfers,
-  isValidAddress,
-  validatePrivateKey,
 } from '../../shared/utils/ethereum.utils';
 import { BalanceInfo, TokenInfo } from '../models/swap-request.model';
+import { validateWalletAddress,validatePrivateKey } from '../../shared/utils/validation.utils';
 
 /**
  * Wallet service for handling blockchain transactions
@@ -30,7 +28,7 @@ export class WalletService {
     tokenAddress?: string,
   ): Promise<BalanceInfo> {
     try {
-      validatePrivateKey(walletAddress); // This will validate address format
+      validateWalletAddress(walletAddress); // This will validate address format
       const chainConfig = getChainConfig(chainId);
       const provider = createProvider(chainConfig.rpcUrl);
 

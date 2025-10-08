@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { AggregatorManagerService } from './aggregator-manager.service';
+import { Permit2Service } from './permit2.service';
 import { ApprovalRequest, ApprovalResult, AggregatorType } from '../models/swap-request.model';
 import { isNativeToken } from '../../shared/utils/chain.utils';
 import { validatePrivateKey, validateTokenAddress, validateWalletAddress } from '../../shared/utils/validation.utils';
@@ -15,10 +16,11 @@ export class ApprovalService {
   constructor(
     private readonly walletService: WalletService,
     private readonly aggregatorManager: AggregatorManagerService,
+    private readonly permit2Service: Permit2Service,
   ) {}
 
   /**
-   * Check if approval is needed
+   * Check if approval is needed (supports both ERC-20 and Permit2)
    */
   async isApprovalNeeded(
     chainId: number,
@@ -32,6 +34,15 @@ export class ApprovalService {
         return false; // Native tokens don't need approval
       }
 
+      // Check if Permit2 is supported and token is compatible
+      if (this.permit2Service.isPermit2Supported(chainId)) {
+        const isPermit2Compatible = await this.permit2Service.isTokenPermit2Compatible(chainId, tokenAddress);
+        if (isPermit2Compatible) {
+          return await this.permit2Service.isPermit2ApprovalNeeded(chainId, tokenAddress, owner, spender, amount);
+        }
+      }
+
+      // Fallback to traditional ERC-20 approval check
       const currentAllowance = await this.walletService.getAllowance(
         chainId,
         tokenAddress,
@@ -239,6 +250,75 @@ export class ApprovalService {
     } catch (error) {
       this.logger.error(`Failed to wait for approval confirmation: ${error.message}`, error.stack);
       throw new Error(`Failed to wait for approval confirmation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create Permit2 signature for gasless approval
+   */
+  async createPermit2Signature(
+    chainId: number,
+    privateKey: string,
+    tokenAddress: string,
+    spender: string,
+    amount: string,
+    deadline: number,
+  ): Promise<{
+    signature: string;
+    permitData: any;
+  }> {
+    try {
+      validatePrivateKey(privateKey);
+      validateTokenAddress(tokenAddress);
+      validateWalletAddress(spender);
+
+      if (isNativeToken(tokenAddress)) {
+        throw new Error('Cannot create Permit2 signature for native token');
+      }
+
+      if (!this.permit2Service.isPermit2Supported(chainId)) {
+        throw new Error(`Permit2 not supported on chain ${chainId}`);
+      }
+
+      const isPermit2Compatible = await this.permit2Service.isTokenPermit2Compatible(chainId, tokenAddress);
+      if (!isPermit2Compatible) {
+        throw new Error(`Token ${tokenAddress} is not Permit2 compatible`);
+      }
+
+      return await this.permit2Service.createPermit2Signature(
+        chainId,
+        privateKey,
+        tokenAddress,
+        spender,
+        amount,
+        deadline,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to create Permit2 signature: ${error.message}`, error.stack);
+      throw new Error(`Failed to create Permit2 signature: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if Permit2 is supported and token is compatible
+   */
+  async isPermit2Available(
+    chainId: number,
+    tokenAddress: string,
+  ): Promise<boolean> {
+    try {
+      if (isNativeToken(tokenAddress)) {
+        return false;
+      }
+
+      if (!this.permit2Service.isPermit2Supported(chainId)) {
+        return false;
+      }
+
+      return await this.permit2Service.isTokenPermit2Compatible(chainId, tokenAddress);
+    } catch (error) {
+      this.logger.error(`Failed to check Permit2 availability: ${error.message}`, error.stack);
+      return false;
     }
   }
 }

@@ -69,10 +69,6 @@ export interface ApprovalResult {
 
 export enum AggregatorType {
   ZEROX = '0x',
-  ONEINCH = '1inch',
-  PARASWAP = 'paraswap',
-  COW = 'cow',
-  UNISWAPX = 'uniswapx',
 }
 
 export interface AggregatorConfig {

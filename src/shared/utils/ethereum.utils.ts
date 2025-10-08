@@ -1,5 +1,4 @@
 import { ethers } from 'ethers';
-import { isNativeToken } from './chain.utils';
 
 /**
  * Utility functions for Ethereum operations
@@ -146,7 +145,11 @@ export async function waitForTransaction(
   confirmations: number = 1,
 ): Promise<ethers.TransactionReceipt> {
   try {
-    return await provider.waitForTransaction(txHash, confirmations);
+    const receipt = await provider.waitForTransaction(txHash, confirmations);
+    if (!receipt) {
+      throw new Error('Transaction receipt not found');
+    }
+    return receipt;
   } catch (error) {
     throw new Error(`Transaction confirmation failed: ${error.message}`);
   }

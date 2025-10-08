@@ -1,5 +1,6 @@
-import { IsString, IsNumber, IsOptional, Type } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * DTO for token approval request

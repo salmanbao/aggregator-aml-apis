@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  ParseIntPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -79,7 +80,6 @@ export class SwapController {
   @ApiResponse({ status: 500, description: 'Internal server error' })
   async getQuote(@Body() request: SwapQuoteRequestDto): Promise<SwapQuote> {
     this.logger.log(`Getting quote for ${request.sellToken} -> ${request.buyToken}`);
-    
     return await this.quoteService.getQuote(
       request.chainId,
       request.sellToken,
@@ -315,9 +315,9 @@ export class SwapController {
     status: 200,
     description: 'Supported aggregators retrieved successfully',
   })
-  async getSupportedAggregators(@Query('chainId') chainId: number): Promise<AggregatorType[]> {
+  async getSupportedAggregators(@Query('chainId', ParseIntPipe) chainId: number): Promise<AggregatorType[]> {
     this.logger.log(`Getting supported aggregators for chain ${chainId}`);
-    
+
     return this.quoteService.getSupportedAggregators(chainId);
   }
 

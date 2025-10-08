@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { AggregatorManagerService } from './aggregator-manager.service';
 import { SwapRequest, SwapQuote, AggregatorType } from '../models/swap-request.model';
 import {
@@ -68,12 +68,19 @@ export class QuoteService {
       return quote;
     } catch (error) {
       this.logger.error(`Failed to get quote: ${error.message}`, error.stack);
+      
+      // If it's a validation error (from our validation functions), throw BadRequestException
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
+      // For other errors, throw a generic error
       throw new Error(`Failed to get quote: ${error.message}`);
     }
   }
 
   /**
-   * Get quotes from multiple aggregators
+   * Get quotes from 0x Protocol v2
    */
   async getMultipleQuotes(
     chainId: number,
@@ -97,50 +104,34 @@ export class QuoteService {
         deadline,
       );
 
-      const supportedAggregators = this.aggregatorManager.getSupportedAggregators(chainId);
-      const quotes: Array<{ aggregator: AggregatorType; quote: SwapQuote }> = [];
+      // Only get quote from 0x Protocol v2
+      const quote = await this.getQuote(
+        chainId,
+        sellToken,
+        buyToken,
+        sellAmount,
+        taker,
+        recipient,
+        slippagePercentage,
+        deadline,
+        AggregatorType.ZEROX,
+      );
 
-      // Get quotes from all supported aggregators
-      for (const aggregatorType of supportedAggregators) {
-        try {
-          const quote = await this.getQuote(
-            chainId,
-            sellToken,
-            buyToken,
-            sellAmount,
-            taker,
-            recipient,
-            slippagePercentage,
-            deadline,
-            aggregatorType,
-          );
-
-          quotes.push({ aggregator: aggregatorType, quote });
-        } catch (error) {
-          this.logger.warn(`Failed to get quote from ${aggregatorType}: ${error.message}`);
-        }
-      }
-
-      if (quotes.length === 0) {
-        throw new Error('No quotes available from any aggregator');
-      }
-
-      // Sort by buy amount (best price first)
-      quotes.sort((a, b) => {
-        const amountA = BigInt(a.quote.buyAmount);
-        const amountB = BigInt(b.quote.buyAmount);
-        return amountA > amountB ? -1 : amountA < amountB ? 1 : 0;
-      });
-
-      return quotes;
+      return [{ aggregator: AggregatorType.ZEROX, quote }];
     } catch (error) {
-      this.logger.error(`Failed to get multiple quotes: ${error.message}`, error.stack);
-      throw new Error(`Failed to get multiple quotes: ${error.message}`);
+      this.logger.error(`Failed to get 0x quote: ${error.message}`, error.stack);
+      
+      // If it's a validation error, throw BadRequestException
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
+      throw new Error(`Failed to get 0x quote: ${error.message}`);
     }
   }
 
   /**
-   * Get best quote from all aggregators
+   * Get best quote from 0x Protocol v2
    */
   async getBestQuote(
     chainId: number,
@@ -164,7 +155,7 @@ export class QuoteService {
         deadline,
       );
 
-      // Return the first quote (already sorted by best price)
+      // Return the 0x quote
       const bestQuote = quotes[0];
 
       this.logger.log(
@@ -174,12 +165,18 @@ export class QuoteService {
       return bestQuote;
     } catch (error) {
       this.logger.error(`Failed to get best quote: ${error.message}`, error.stack);
+      
+      // If it's a validation error, throw BadRequestException
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
       throw new Error(`Failed to get best quote: ${error.message}`);
     }
   }
 
   /**
-   * Compare quotes from different aggregators
+   * Compare quotes from 0x Protocol v2 (simplified since only one aggregator)
    */
   async compareQuotes(
     chainId: number,
@@ -207,28 +204,20 @@ export class QuoteService {
         deadline,
       );
 
-      if (quotes.length < 2) {
-        return {
-          quotes,
-          bestAggregator: quotes[0]?.aggregator || AggregatorType.ZEROX,
-          priceDifference: '0',
-        };
-      }
-
-      const bestQuote = quotes[0];
-      const worstQuote = quotes[quotes.length - 1];
-
-      const bestAmount = BigInt(bestQuote.quote.buyAmount);
-      const worstAmount = BigInt(worstQuote.quote.buyAmount);
-      const priceDifference = ((bestAmount - worstAmount) * BigInt(10000)) / worstAmount;
-
+      // Since we only have 0x Protocol, return the single quote
       return {
         quotes,
-        bestAggregator: bestQuote.aggregator,
-        priceDifference: priceDifference.toString(),
+        bestAggregator: AggregatorType.ZEROX,
+        priceDifference: '0', // No comparison since only one aggregator
       };
     } catch (error) {
       this.logger.error(`Failed to compare quotes: ${error.message}`, error.stack);
+      
+      // If it's a validation error, throw BadRequestException
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
       throw new Error(`Failed to compare quotes: ${error.message}`);
     }
   }
@@ -265,16 +254,36 @@ export class QuoteService {
   }
 
   /**
-   * Get supported aggregators for a chain
+   * Get supported aggregators for a chain (only 0x Protocol)
    */
   getSupportedAggregators(chainId: number): AggregatorType[] {
     return this.aggregatorManager.getSupportedAggregators(chainId);
   }
 
   /**
-   * Check if aggregator supports a chain
+   * Check if aggregator supports a chain (only 0x Protocol)
    */
   isAggregatorSupported(chainId: number, aggregatorType: AggregatorType): boolean {
     return this.aggregatorManager.isAggregatorSupported(chainId, aggregatorType);
   }
+
+  /**
+   * Check if an error is a validation error (should return 400 status)
+   */
+  private isValidationError(error: any): boolean {
+    const validationErrorMessages = [
+      'Invalid chain ID',
+      'Invalid token address',
+      'Invalid wallet address', 
+      'Invalid amount',
+      'Invalid slippage',
+      'Deadline must be',
+      'Sell token and buy token cannot be the same',
+    ];
+    
+    return validationErrorMessages.some(msg => 
+      error?.message?.includes(msg)
+    );
+  }
 }
+

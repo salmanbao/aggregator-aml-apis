@@ -27,16 +27,16 @@ export class LoggingInterceptor implements NestInterceptor {
       `Incoming Request: ${method} ${url} - IP: ${ip} - User-Agent: ${userAgent}`,
     );
 
-    if (Object.keys(body).length > 0) {
-      this.logger.debug(`Request Body: ${JSON.stringify(body)}`);
+    if (body && Object.keys(body).length > 0) {
+      this.logger.debug(`Request Body: ${this.safeStringify(body)}`);
     }
 
-    if (Object.keys(query).length > 0) {
-      this.logger.debug(`Query Params: ${JSON.stringify(query)}`);
+    if (query && Object.keys(query).length > 0) {
+      this.logger.debug(`Query Params: ${this.safeStringify(query)}`);
     }
 
-    if (Object.keys(params).length > 0) {
-      this.logger.debug(`Route Params: ${JSON.stringify(params)}`);
+    if (params && Object.keys(params).length > 0) {
+      this.logger.debug(`Route Params: ${this.safeStringify(params)}`);
     }
 
     return next.handle().pipe(
@@ -46,15 +46,26 @@ export class LoggingInterceptor implements NestInterceptor {
           this.logger.log(
             `Outgoing Response: ${method} ${url} - ${duration}ms`,
           );
-          this.logger.debug(`Response Data: ${JSON.stringify(data)}`);
+          this.logger.debug(`Response Data: ${this.safeStringify(data)}`);
         },
         error: (error) => {
           const duration = Date.now() - startTime;
           this.logger.error(
-            `Request Error: ${method} ${url} - ${duration}ms - ${error.message}`,
+            `Request Error: ${method} ${url} - ${duration}ms - ${error?.message || 'Unknown error'}`,
           );
         },
       }),
     );
+  }
+
+  /**
+   * Safely stringify objects, handling circular references and errors
+   */
+  private safeStringify(obj: any): string {
+    try {
+      return JSON.stringify(obj);
+    } catch (error) {
+      return `[Object - Cannot stringify: ${error.message}]`;
+    }
   }
 }

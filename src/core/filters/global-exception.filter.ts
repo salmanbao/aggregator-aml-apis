@@ -42,12 +42,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     const errorResponse = {
-      statusCode: status,
+      success: false,
+      error: {
+        statusCode: status,
+        message,
+        error,
+        path: request.url,
+        method: request.method,
+      },
       timestamp: new Date().toISOString(),
-      path: request.url,
-      method: request.method,
-      message,
-      error,
     };
 
     this.logger.error(

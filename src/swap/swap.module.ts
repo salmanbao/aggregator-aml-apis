@@ -6,12 +6,10 @@ import { ApprovalService } from './services/approval.service';
 import { WalletService } from './services/wallet.service';
 import { AggregatorManagerService } from './services/aggregator-manager.service';
 import { ZeroXService } from './services/aggregators/zero-x.service';
-import { OneInchService } from './services/aggregators/one-inch.service';
-import { ParaSwapService } from './services/aggregators/paraswap.service';
-import { CowService } from './services/aggregators/cow.service';
+import { Permit2Service } from './services/permit2.service';
 
 /**
- * Swap module that provides token swap functionality
+ * Swap module that provides token swap functionality using 0x Protocol v2
  */
 @Module({
   controllers: [SwapController],
@@ -22,9 +20,7 @@ import { CowService } from './services/aggregators/cow.service';
     WalletService,
     AggregatorManagerService,
     ZeroXService,
-    OneInchService,
-    ParaSwapService,
-    CowService,
+    Permit2Service,
   ],
   exports: [
     QuoteService,
@@ -32,6 +28,7 @@ import { CowService } from './services/aggregators/cow.service';
     ApprovalService,
     WalletService,
     AggregatorManagerService,
+    Permit2Service,
   ],
 })
 export class SwapModule {}

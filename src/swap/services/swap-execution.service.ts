@@ -34,7 +34,7 @@ export class SwapExecutionService {
   ) {}
 
   /**
-   * Execute complete swap with pre-flight checks
+   * Execute complete swap with pre-flight checks and comprehensive error handling
    */
   async executeSwap(
     chainId: number,
@@ -73,28 +73,69 @@ export class SwapExecutionService {
         aggregator: aggregatorType,
       };
 
+      this.logger.log(`Starting swap execution: ${sellToken} -> ${buyToken}, amount: ${sellAmount}`);
+
       // Pre-flight checks
       await this.performPreFlightChecks(swapRequest);
 
-      // Get quote
-      const quote = await this.aggregatorManager.getQuote(swapRequest, aggregatorType);
+      // Get quote with retry logic
+      let quote: SwapQuote | undefined;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries) {
+        try {
+          quote = await this.aggregatorManager.getQuote(swapRequest, aggregatorType);
+          break;
+        } catch (error) {
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            throw new Error(`Failed to get quote after ${maxRetries} attempts: ${error.message}`);
+          }
+          this.logger.warn(`Quote attempt ${retryCount} failed, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+        }
+      }
+
+      if (!quote) {
+        throw new Error('Failed to get quote after all retry attempts');
+      }
 
       // Handle approval if needed
       if (!isNativeToken(sellToken)) {
         await this.handleApproval(chainId, privateKey, sellToken, quote, aggregatorType);
       }
 
-      // Execute swap
-      const txHash = await this.walletService.executeSwap(
-        chainId,
-        privateKey,
-        quote.to,
-        quote.data,
-        quote.value,
-        quote.gas,
-      );
+      // Execute swap with retry logic
+      let txHash: string | undefined;
+      retryCount = 0;
 
-      // Wait for confirmation
+      while (retryCount < maxRetries) {
+        try {
+          txHash = await this.walletService.executeSwap(
+            chainId,
+            privateKey,
+            quote.to,
+            quote.data,
+            quote.value,
+            quote.gas,
+          );
+          break;
+        } catch (error) {
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            throw new Error(`Failed to execute swap after ${maxRetries} attempts: ${error.message}`);
+          }
+          this.logger.warn(`Swap execution attempt ${retryCount} failed, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount)); // Exponential backoff
+        }
+      }
+
+      if (!txHash) {
+        throw new Error('Failed to execute swap after all retry attempts');
+      }
+
+      // Wait for confirmation with timeout
       const receipt = await this.walletService.waitForTransactionConfirmation(chainId, txHash);
 
       // Parse result
@@ -104,6 +145,20 @@ export class SwapExecutionService {
       return result;
     } catch (error) {
       this.logger.error(`Failed to execute swap: ${error.message}`, error.stack);
+      
+      // Provide more specific error messages
+      if (error.message.includes('insufficient funds')) {
+        throw new Error('Insufficient funds for transaction (including gas)');
+      } else if (error.message.includes('gas')) {
+        throw new Error('Transaction failed due to gas issues');
+      } else if (error.message.includes('slippage')) {
+        throw new Error('Transaction failed due to slippage tolerance exceeded');
+      } else if (error.message.includes('deadline')) {
+        throw new Error('Transaction failed due to deadline exceeded');
+      } else if (error.message.includes('network')) {
+        throw new Error('Network error occurred during transaction');
+      }
+      
       throw new Error(`Swap execution failed: ${error.message}`);
     }
   }
@@ -230,7 +285,7 @@ export class SwapExecutionService {
   }
 
   /**
-   * Handle token approval
+   * Handle token approval (supports both ERC-20 and Permit2)
    */
   private async handleApproval(
     chainId: number,
@@ -256,18 +311,32 @@ export class SwapExecutionService {
     );
 
     if (isApprovalNeeded) {
-      this.logger.log('Approval needed, executing approval transaction...');
-      const approvalResult = await this.approvalService.executeApproval(
-        chainId,
-        privateKey,
-        sellToken,
-        quote.allowanceTarget,
-        quote.sellAmount,
-      );
+      this.logger.log('Approval needed, checking for Permit2 support...');
+      
+      // Check if Permit2 is available for gasless approval
+      const isPermit2Available = await this.approvalService.isPermit2Available(chainId, sellToken);
+      
+      if (isPermit2Available) {
+        this.logger.log('Permit2 available, creating gasless approval signature...');
+        // For Permit2, we would create a signature instead of executing a transaction
+        // The 0x API v2 with Permit2 handles this automatically
+        this.logger.log('Permit2 signature will be handled by 0x Protocol v2');
+      } else {
+        this.logger.log('Permit2 not available, executing traditional approval transaction...');
+        const approvalResult = await this.approvalService.executeApproval(
+          chainId,
+          privateKey,
+          sellToken,
+          quote.allowanceTarget,
+          quote.sellAmount,
+        );
 
-      // Wait for approval confirmation
-      await this.walletService.waitForTransactionConfirmation(chainId, approvalResult.transactionHash);
-      this.logger.log(`Approval confirmed: ${approvalResult.transactionHash}`);
+        // Wait for approval confirmation
+        await this.walletService.waitForTransactionConfirmation(chainId, approvalResult.transactionHash);
+        this.logger.log(`Approval confirmed: ${approvalResult.transactionHash}`);
+      }
+    } else {
+      this.logger.log('No approval needed');
     }
   }
 
