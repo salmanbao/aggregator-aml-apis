@@ -1,6 +1,6 @@
-import { IsString, IsNumber } from 'class-validator';
+import { IsString, IsNumber, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * DTO for token approval request
@@ -75,4 +75,12 @@ export class ApprovalStatusRequestDto {
   })
   @IsString()
   owner: string;
+
+  @ApiPropertyOptional({
+    description: 'Amount to check approval for (optional - if provided, checks if current allowance is sufficient)',
+    example: '1000000000000000000',
+  })
+  @IsOptional()
+  @IsString()
+  amount?: string;
 }

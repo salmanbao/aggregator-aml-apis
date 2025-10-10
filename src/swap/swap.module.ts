@@ -7,6 +7,8 @@ import { WalletService } from './services/wallet.service';
 import { AggregatorManagerService } from './services/aggregator-manager.service';
 import { ZeroXService } from './services/aggregators/zero-x.service';
 import { Permit2Service } from './services/permit2.service';
+import { Permit2WorkflowService } from './services/permit2-workflow.service';
+import { TransactionParserService } from './services/transaction-parser.service';
 
 /**
  * Swap module that provides token swap functionality using 0x Protocol v2
@@ -21,6 +23,8 @@ import { Permit2Service } from './services/permit2.service';
     AggregatorManagerService,
     ZeroXService,
     Permit2Service,
+    Permit2WorkflowService,
+    TransactionParserService,
   ],
   exports: [
     QuoteService,
@@ -29,6 +33,8 @@ import { Permit2Service } from './services/permit2.service';
     WalletService,
     AggregatorManagerService,
     Permit2Service,
+    Permit2WorkflowService,
+    TransactionParserService,
   ],
 })
 export class SwapModule {}

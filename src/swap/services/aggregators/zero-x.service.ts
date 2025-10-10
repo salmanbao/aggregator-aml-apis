@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CustomHttpService } from '../../../shared/services/http.service';
-import { SwapRequest, SwapQuote, AggregatorType } from '../../models/swap-request.model';
+import { SwapRequest, SwapQuote, AggregatorType, Permit2Data, ApprovalStrategy } from '../../models/swap-request.model';
 import { getChainConfig } from '../../../shared/utils/chain.utils';
 
 /**
- * 0x Protocol v2 aggregator service
+ * 0x Protocol v2 aggregator service with support for both AllowanceHolder and Permit2
  */
 @Injectable()
 export class ZeroXService {
@@ -15,36 +15,56 @@ export class ZeroXService {
   constructor(private readonly httpService: CustomHttpService) {}
 
   /**
-   * Get swap quote from 0x Protocol v2
+   * Get swap quote from 0x Protocol v2 (Permit2 endpoint)
+   * @deprecated Use getQuoteWithStrategy() instead for better control
    */
   async getQuote(request: SwapRequest): Promise<SwapQuote> {
-    try {
-      const url = `${this.baseUrl}/swap/permit2/quote?`;
+    return this.getQuoteWithStrategy(request, ApprovalStrategy.PERMIT2);
+  }
 
+  /**
+   * Get swap quote using AllowanceHolder strategy (Recommended)
+   */
+  async getAllowanceHolderQuote(request: SwapRequest): Promise<SwapQuote> {
+    return this.getQuoteWithStrategy(request, ApprovalStrategy.ALLOWANCE_HOLDER);
+  }
+
+  /**
+   * Get swap quote using Permit2 strategy (Advanced)
+   */
+  async getPermit2Quote(request: SwapRequest): Promise<SwapQuote> {
+    return this.getQuoteWithStrategy(request, ApprovalStrategy.PERMIT2);
+  }
+
+  /**
+   * Get swap quote with specified approval strategy
+   */
+  async getQuoteWithStrategy(request: SwapRequest, strategy: ApprovalStrategy): Promise<SwapQuote> {
+    try {
+      const url = `${this.baseUrl}/swap/${strategy}/quote?`;
       const params = this.buildQuoteParams(request);
       const headers = this.buildHeaders();
       const quoteParams = new URLSearchParams({...params});
       
-
-      this.logger.debug(`Getting 0x v2 quote for chain ${request.chainId}`, params);
+      this.logger.debug(`Getting 0x v2 ${strategy} quote for chain ${request.chainId}`, params);
       const response = await this.httpService.get<any>(url + quoteParams.toString(), {
         headers,
         timeout: 15000,
       });
-
+      
       // Validate response before parsing
       this.validateQuoteResponse(response, request);
 
-      return this.parseQuoteResponse(response, request);
+      return this.parseQuoteResponse(response, request, strategy);
     } catch (error) {
-      this.logger.error(`Failed to get 0x v2 quote: ${error.message}`, error.stack);
+      this.logger.error(`Failed to get 0x v2 ${strategy} quote: ${error.message}`, error.stack);
       
       // Use specific error handling
       if (error.response || error.request) {
-        this.handleApiError(error, 'getQuote');
+        this.handleApiError(error, `getQuoteWithStrategy(${strategy})`);
       }
       
-      throw new Error(`0x v2 quote failed: ${error.message}`);
+      throw new Error(`0x v2 ${strategy} quote failed: ${error.message}`);
     }
   }
 
@@ -71,7 +91,6 @@ export class ZeroXService {
       params.txOrigin = request.recipient;
     }
 
-
     return params;
   }
 
@@ -93,9 +112,36 @@ export class ZeroXService {
   /**
    * Parse 0x v2 quote response
    */
-  private parseQuoteResponse(response: any, request: SwapRequest): SwapQuote {
+  private parseQuoteResponse(response: any, request: SwapRequest, strategy: ApprovalStrategy = ApprovalStrategy.PERMIT2): SwapQuote {
     // Handle 0x v2 response format
     const minBuyAmount = response.minBuyAmount || response.buyAmount;
+
+    // Extract permit2 data if available for gasless approvals (Permit2 strategy only)
+    let permit2Data: Permit2Data | undefined = undefined;
+    if (strategy === ApprovalStrategy.PERMIT2 && response.permit2?.eip712) {
+      permit2Data = {
+        type: response.permit2.type,
+        hash: response.permit2.hash,
+        eip712: response.permit2.eip712
+      };
+      this.logger.debug('Permit2 data extracted from 0x response', { 
+        type: permit2Data.type,
+        hash: permit2Data.hash,
+        strategy
+      });
+    } else if (strategy === ApprovalStrategy.ALLOWANCE_HOLDER) {
+      // AllowanceHolder doesn't use permit2 data - uses traditional allowances
+      this.logger.debug('AllowanceHolder strategy - no permit2 data needed', { strategy });
+    }
+
+    // Extract transaction data (to, data, value, gas, gasPrice)
+    const transaction = response.transaction || {
+      to: response.to,
+      data: response.data,
+      value: response.value || '0',
+      gas: response.gas || response.estimatedGas,
+      gasPrice: response.gasPrice
+    };
 
     return {
       sellToken: response.sellToken || response.sellTokenAddress,
@@ -103,49 +149,80 @@ export class ZeroXService {
       sellAmount: response.sellAmount,
       buyAmount: response.buyAmount,
       minBuyAmount: minBuyAmount.toString(),
-      gas: response.gas || response.estimatedGas,
-      gasPrice: response.gasPrice,
-      to: response.to,
-      data: response.data,
-      value: response.value || '0',
+      gas: transaction.gas,
+      gasPrice: transaction.gasPrice,
+      to: transaction.to,
+      data: transaction.data,
+      value: transaction.value,
       allowanceTarget: response.allowanceTarget,
       aggregator: AggregatorType.ZEROX,
       priceImpact: response.priceImpact,
       estimatedGas: response.estimatedGas || response.gas,
+      permit2: permit2Data, // Include permit2 data for gasless approvals (Permit2 only)
+      approvalStrategy: strategy, // Include the strategy used for this quote
     };
   }
 
   /**
-   * Get spender address for approvals (0x v2 uses Permit2)
+   * Get spender address for approvals (strategy-specific)
    */
-  async getSpenderAddress(chainId: number): Promise<string> {
+  async getSpenderAddress(chainId: number, strategy: ApprovalStrategy = ApprovalStrategy.ALLOWANCE_HOLDER): Promise<string> {
     try {
-      // For 0x v2 with Permit2, the spender is typically the 0x Exchange Proxy
-      // We can get this from the quote response or use a known address
-      const chainConfig = getChainConfig(chainId);
-      
-      // Known 0x Exchange Proxy addresses for different chains
-      const exchangeProxyAddresses: Record<number, string> = {
-        1: '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // Ethereum
-        137: '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // Polygon
-        56: '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // BSC
-        42161: '0xdef1c0ded9bec7f1a1679833240f027b25eff', // Arbitrum
-        10: '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // Optimism
-        8453: '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // Base
-        43114: '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // Avalanche
-      };
-
-      const spenderAddress = exchangeProxyAddresses[chainId];
-      if (!spenderAddress) {
-        throw new Error(`Unsupported chain ID: ${chainId}`);
+      if (strategy === ApprovalStrategy.PERMIT2) {
+        // Permit2 contract is deployed at the same address across all chains
+        return '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+      } else {
+        // AllowanceHolder addresses are chain-specific
+        return this.getAllowanceHolderAddress(chainId);
       }
-
-      this.logger.debug(`Using 0x Exchange Proxy address for chain ${chainId}: ${spenderAddress}`);
-      return spenderAddress;
     } catch (error) {
-      this.logger.error(`Failed to get 0x spender address: ${error.message}`);
-      throw new Error(`Failed to get 0x spender address: ${error.message}`);
+      this.logger.error(`Failed to get spender address for ${strategy}: ${error.message}`);
+      throw new Error(`Failed to get spender address for ${strategy}: ${error.message}`);
     }
+  }
+
+  /**
+   * Get AllowanceHolder contract address for a specific chain
+   */
+  private getAllowanceHolderAddress(chainId: number): string {
+    // AllowanceHolder contract addresses by hardfork type
+    const cancunChains = [1, 11155111, 137, 8453, 10, 42161, 43114, 81457, 56]; // Ethereum, Sepolia, Polygon, Base, Optimism, Arbitrum, Avalanche, Blast, BNB
+    const shanghaiChains = [534352, 5000]; // Scroll, Mantle
+    const londonChains = [59144]; // Linea
+
+    if (cancunChains.includes(chainId)) {
+      return '0x0000000000001fF3684f28c67538d4D072C22734';
+    } else if (shanghaiChains.includes(chainId)) {
+      return '0x0000000000005E88410CcDFaDe4a5EfaE4b49562';
+    } else if (londonChains.includes(chainId)) {
+      return '0x000000000000175a8b9bC6d539B3708EEd92EA6c';
+    } else {
+      throw new Error(`AllowanceHolder not supported on chain ${chainId}`);
+    }
+  }
+
+  /**
+   * Check if a strategy is supported on a chain
+   */
+  isStrategySupported(chainId: number, strategy: ApprovalStrategy): boolean {
+    if (!this.isChainSupported(chainId)) {
+      return false;
+    }
+
+    if (strategy === ApprovalStrategy.PERMIT2) {
+      // Permit2 is supported on all chains that 0x supports
+      return true;
+    } else if (strategy === ApprovalStrategy.ALLOWANCE_HOLDER) {
+      // AllowanceHolder is supported on most chains, but not all
+      try {
+        this.getAllowanceHolderAddress(chainId);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -170,24 +247,47 @@ export class ZeroXService {
 
   /**
    * Get price quote (indicative price without transaction data)
+   * @deprecated Use getPriceWithStrategy() instead for better control
    */
   async getPrice(request: SwapRequest): Promise<any> {
+    return this.getPriceWithStrategy(request, ApprovalStrategy.PERMIT2);
+  }
+
+  /**
+   * Get AllowanceHolder price quote (Recommended)
+   */
+  async getAllowanceHolderPrice(request: SwapRequest): Promise<any> {
+    return this.getPriceWithStrategy(request, ApprovalStrategy.ALLOWANCE_HOLDER);
+  }
+
+  /**
+   * Get Permit2 price quote (Advanced)
+   */
+  async getPermit2Price(request: SwapRequest): Promise<any> {
+    return this.getPriceWithStrategy(request, ApprovalStrategy.PERMIT2);
+  }
+
+  /**
+   * Get price quote with specified approval strategy
+   */
+  async getPriceWithStrategy(request: SwapRequest, strategy: ApprovalStrategy): Promise<any> {
     try {
-      const url = `${this.baseUrl}/swap/v2/price`;
+      const url = `${this.baseUrl}/swap/${strategy}/price`;
       const params = this.buildQuoteParams(request);
       const headers = this.buildHeaders();
+      const queryParams = new URLSearchParams(params);
 
-      this.logger.debug(`Getting 0x v2 price for chain ${request.chainId}`, params);
+      this.logger.debug(`Getting 0x v2 ${strategy} price for chain ${request.chainId}`, params);
 
-      const response = await this.httpService.get<any>(url, {
+      const response = await this.httpService.get<any>(url + '?' + queryParams.toString(), {
         headers,
         timeout: 10000,
       });
 
       return response;
     } catch (error) {
-      this.logger.error(`Failed to get 0x v2 price: ${error.message}`, error.stack);
-      throw new Error(`0x v2 price failed: ${error.message}`);
+      this.logger.error(`Failed to get 0x v2 ${strategy} price: ${error.message}`, error.stack);
+      throw new Error(`0x v2 ${strategy} price failed: ${error.message}`);
     }
   }
 

@@ -1,11 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ethers } from 'ethers';
+import { 
+  createPublicClient, 
+  createWalletClient, 
+  http, 
+  getContract, 
+  formatEther, 
+  formatUnits, 
+  parseEther,
+  type PublicClient,
+  type WalletClient,
+  type Address,
+  type Hex,
+  type TransactionReceipt
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { getChainConfig, isNativeToken } from '../../shared/utils/chain.utils';
 import {
   createProvider,
-  createWallet,
-  getERC20Interface,
-  estimateGas,
+  ERC20_ABI,
   waitForTransaction,
   parseTokenTransfers,
 } from '../../shared/utils/ethereum.utils';
@@ -34,30 +46,35 @@ export class WalletService {
 
       if (!tokenAddress || isNativeToken(tokenAddress)) {
         // Get native token balance
-        const balance = await provider.getBalance(walletAddress);
+        const balance = await provider.getBalance({ 
+          address: walletAddress as Address 
+        });
         return {
           tokenAddress: '0x0000000000000000000000000000000000000000',
           balance: balance.toString(),
-          formattedBalance: ethers.formatEther(balance),
+          formattedBalance: formatEther(balance),
           decimals: 18,
           symbol: chainConfig.nativeCurrency.symbol,
         };
       }
 
       // Get ERC-20 token balance
-      const erc20Interface = getERC20Interface();
-      const contract = new ethers.Contract(tokenAddress, erc20Interface, provider);
+      const contract = getContract({
+        address: tokenAddress as Address,
+        abi: ERC20_ABI,
+        client: provider,
+      });
 
       const [balance, decimals, symbol] = await Promise.all([
-        contract.balanceOf(walletAddress),
-        contract.decimals(),
-        contract.symbol(),
+        contract.read.balanceOf([walletAddress as Address]),
+        contract.read.decimals(),
+        contract.read.symbol(),
       ]);
 
       return {
         tokenAddress,
         balance: balance.toString(),
-        formattedBalance: ethers.formatUnits(balance, decimals),
+        formattedBalance: formatUnits(balance, decimals),
         decimals: Number(decimals),
         symbol,
       };
@@ -105,13 +122,16 @@ export class WalletService {
         };
       }
 
-      const erc20Interface = getERC20Interface();
-      const contract = new ethers.Contract(tokenAddress, erc20Interface, provider);
+      const contract = getContract({
+        address: tokenAddress as Address,
+        abi: ERC20_ABI,
+        client: provider,
+      });
 
       const [name, symbol, decimals] = await Promise.all([
-        contract.name(),
-        contract.symbol(),
-        contract.decimals(),
+        contract.read.name(),
+        contract.read.symbol(),
+        contract.read.decimals(),
       ]);
 
       return {
@@ -144,10 +164,16 @@ export class WalletService {
 
       const chainConfig = getChainConfig(chainId);
       const provider = createProvider(chainConfig.rpcUrl);
-      const erc20Interface = getERC20Interface();
-      const contract = new ethers.Contract(tokenAddress, erc20Interface, provider);
+      const contract = getContract({
+        address: tokenAddress as Address,
+        abi: ERC20_ABI,
+        client: provider,
+      });
 
-      const allowance = await contract.allowance(owner, spender);
+      const allowance = await contract.read.allowance([
+        owner as Address, 
+        spender as Address
+      ]);
       return allowance.toString();
     } catch (error) {
       this.logger.error(`Failed to get allowance: ${error.message}`, error.stack);
@@ -168,30 +194,38 @@ export class WalletService {
     try {
       validatePrivateKey(privateKey);
       const chainConfig = getChainConfig(chainId);
-      const provider = createProvider(chainConfig.rpcUrl);
-      const wallet = createWallet(privateKey, provider);
+      const account = privateKeyToAccount(privateKey as Hex);
+      
+      const walletClient = createWalletClient({
+        account,
+        transport: http(chainConfig.rpcUrl),
+      });
+
+      const publicClient = createPublicClient({
+        transport: http(chainConfig.rpcUrl),
+      });
 
       if (isNativeToken(tokenAddress)) {
         throw new Error('Cannot approve native token');
       }
 
-      const erc20Interface = getERC20Interface();
-      const contract = new ethers.Contract(tokenAddress, erc20Interface, wallet);
-
-      // Estimate gas for approval
-      const gasEstimate = await estimateGas(provider, {
-        to: tokenAddress,
-        data: contract.interface.encodeFunctionData('approve', [spender, amount]),
-        from: wallet.address,
+      const contract = getContract({
+        address: tokenAddress as Address,
+        abi: ERC20_ABI,
+        client: { public: publicClient, wallet: walletClient },
       });
 
       // Execute approval transaction
-      const tx = await contract.approve(spender, amount, {
-        gasLimit: gasEstimate,
+      const hash = await contract.write.approve([
+        spender as Address, 
+        BigInt(amount)
+      ], {
+        account: walletClient.account,
+        chain: null,
       });
 
-      this.logger.log(`Approval transaction sent: ${tx.hash}`);
-      return tx.hash;
+      this.logger.log(`Approval transaction sent: ${hash}`);
+      return hash;
     } catch (error) {
       this.logger.error(`Failed to execute approval: ${error.message}`, error.stack);
       throw new Error(`Failed to execute approval: ${error.message}`);
@@ -212,32 +246,24 @@ export class WalletService {
     try {
       validatePrivateKey(privateKey);
       const chainConfig = getChainConfig(chainId);
-      const provider = createProvider(chainConfig.rpcUrl);
-      const wallet = createWallet(privateKey, provider);
-
-      // Estimate gas if not provided
-      let estimatedGas = gasLimit;
-      if (!estimatedGas) {
-        estimatedGas = (
-          await estimateGas(provider, {
-            to,
-            data,
-            value,
-            from: wallet.address,
-          })
-        ).toString();
-      }
-
-      // Execute swap transaction
-      const tx = await wallet.sendTransaction({
-        to,
-        data,
-        value,
-        gasLimit: estimatedGas,
+      const account = privateKeyToAccount(privateKey as Hex);
+      
+      const walletClient = createWalletClient({
+        account,
+        transport: http(chainConfig.rpcUrl),
       });
 
-      this.logger.log(`Swap transaction sent: ${tx.hash}`);
-      return tx.hash;
+      // Execute swap transaction
+      const hash = await walletClient.sendTransaction({
+        to: to as Address,
+        data: data as Hex,
+        value: BigInt(value),
+        gas: gasLimit ? BigInt(gasLimit) : undefined,
+        chain: null,
+      });
+
+      this.logger.log(`Swap transaction sent: ${hash}`);
+      return hash;
     } catch (error) {
       this.logger.error(`Failed to execute swap: ${error.message}`, error.stack);
       throw new Error(`Failed to execute swap: ${error.message}`);
@@ -251,12 +277,12 @@ export class WalletService {
     chainId: number,
     txHash: string,
     confirmations: number = 1,
-  ): Promise<ethers.TransactionReceipt> {
+  ): Promise<TransactionReceipt> {
     try {
       const chainConfig = getChainConfig(chainId);
       const provider = createProvider(chainConfig.rpcUrl);
 
-      const receipt = await waitForTransaction(provider, txHash, confirmations);
+      const receipt = await waitForTransaction(provider, txHash as Hex, confirmations);
       this.logger.log(`Transaction confirmed: ${txHash}`);
       return receipt;
     } catch (error) {
@@ -269,7 +295,7 @@ export class WalletService {
    * Parse transaction receipt for token transfers
    */
   parseTransactionReceipt(
-    receipt: ethers.TransactionReceipt,
+    receipt: TransactionReceipt,
     tokenAddress: string,
   ): Array<{ from: string; to: string; amount: bigint }> {
     return parseTokenTransfers(receipt, tokenAddress);
@@ -280,22 +306,22 @@ export class WalletService {
    */
   async getTransactionStatus(chainId: number, txHash: string): Promise<{
     status: 'pending' | 'confirmed' | 'failed';
-    receipt?: ethers.TransactionReceipt;
+    receipt?: TransactionReceipt;
   }> {
     try {
       const chainConfig = getChainConfig(chainId);
       const provider = createProvider(chainConfig.rpcUrl);
 
-      const tx = await provider.getTransaction(txHash);
+      const tx = await provider.getTransaction({ hash: txHash as Hex });
       if (!tx) {
         throw new Error('Transaction not found');
       }
 
       if (tx.blockNumber) {
-        const receipt = await provider.getTransactionReceipt(txHash);
+        const receipt = await provider.getTransactionReceipt({ hash: txHash as Hex });
         if (receipt) {
           return {
-            status: receipt.status === 1 ? 'confirmed' : 'failed',
+            status: receipt.status === 'success' ? 'confirmed' : 'failed',
             receipt,
           };
         }

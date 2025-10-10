@@ -1,4 +1,20 @@
-import { ethers } from 'ethers';
+import { 
+  createPublicClient, 
+  createWalletClient, 
+  http, 
+  isAddress, 
+  isHex, 
+  formatEther, 
+  parseEther, 
+  formatUnits, 
+  parseUnits,
+  type PublicClient,
+  type WalletClient,
+  type Address,
+  type Hex,
+  type TransactionReceipt,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 
 /**
  * Utility functions for Ethereum operations
@@ -9,7 +25,7 @@ import { ethers } from 'ethers';
  */
 export function isValidAddress(address: string): boolean {
   try {
-    return ethers.isAddress(address);
+    return isAddress(address);
   } catch {
     return false;
   }
@@ -20,7 +36,7 @@ export function isValidAddress(address: string): boolean {
  */
 export function isValidTxHash(txHash: string): boolean {
   try {
-    return ethers.isHexString(txHash, 32);
+    return isHex(txHash) && txHash.length === 66; // 0x + 64 hex chars
   } catch {
     return false;
   }
@@ -30,28 +46,28 @@ export function isValidTxHash(txHash: string): boolean {
  * Convert wei to ether
  */
 export function weiToEther(wei: string | bigint): string {
-  return ethers.formatEther(wei);
+  return formatEther(BigInt(wei));
 }
 
 /**
  * Convert ether to wei
  */
 export function etherToWei(ether: string): bigint {
-  return ethers.parseEther(ether);
+  return parseEther(ether);
 }
 
 /**
  * Format token amount with decimals
  */
 export function formatTokenAmount(amount: string | bigint, decimals: number): string {
-  return ethers.formatUnits(amount, decimals);
+  return formatUnits(BigInt(amount), decimals);
 }
 
 /**
  * Parse token amount to wei
  */
 export function parseTokenAmount(amount: string, decimals: number): bigint {
-  return ethers.parseUnits(amount, decimals);
+  return parseUnits(amount, decimals);
 }
 
 /**
@@ -79,46 +95,132 @@ export function calculateMaxInput(
 }
 
 /**
- * Get ERC-20 token contract interface
+ * Get ERC-20 token ABI
  */
-export function getERC20Interface(): ethers.Interface {
-  return new ethers.Interface([
-    'function balanceOf(address owner) view returns (uint256)',
-    'function allowance(address owner, address spender) view returns (uint256)',
-    'function approve(address spender, uint256 amount) returns (bool)',
-    'function transfer(address to, uint256 amount) returns (bool)',
-    'function transferFrom(address from, address to, uint256 amount) returns (bool)',
-    'function decimals() view returns (uint8)',
-    'function symbol() view returns (string)',
-    'function name() view returns (string)',
-    'event Transfer(address indexed from, address indexed to, uint256 value)',
-    'event Approval(address indexed owner, address indexed spender, uint256 value)',
-  ]);
+export const ERC20_ABI = [
+  {
+    type: 'function',
+    name: 'balanceOf',
+    stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'allowance',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'transfer',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'transferFrom',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'decimals',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+  {
+    type: 'function',
+    name: 'symbol',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    type: 'function',
+    name: 'name',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    type: 'event',
+    name: 'Transfer',
+    inputs: [
+      { name: 'from', type: 'address', indexed: true },
+      { name: 'to', type: 'address', indexed: true },
+      { name: 'value', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Approval',
+    inputs: [
+      { name: 'owner', type: 'address', indexed: true },
+      { name: 'spender', type: 'address', indexed: true },
+      { name: 'value', type: 'uint256', indexed: false },
+    ],
+  },
+] as const;
+
+/**
+ * Create public client for a given chain
+ */
+export function createProvider(rpcUrl: string): PublicClient {
+  return createPublicClient({
+    transport: http(rpcUrl),
+  });
 }
 
 /**
- * Create provider for a given chain
+ * Create wallet client from private key
  */
-export function createProvider(rpcUrl: string): ethers.JsonRpcProvider {
-  return new ethers.JsonRpcProvider(rpcUrl);
-}
-
-/**
- * Create wallet from private key
- */
-export function createWallet(privateKey: string, provider: ethers.Provider): ethers.Wallet {
-  return new ethers.Wallet(privateKey, provider);
+export function createWallet(privateKey: string, rpcUrl: string): WalletClient {
+  const account = privateKeyToAccount(privateKey as Hex);
+  return createWalletClient({
+    account,
+    transport: http(rpcUrl),
+  });
 }
 
 /**
  * Estimate gas for a transaction
  */
 export async function estimateGas(
-  provider: ethers.Provider,
-  transaction: ethers.TransactionRequest,
+  client: PublicClient,
+  transaction: {
+    account: Address;
+    to: Address;
+    data: Hex;
+    value?: bigint;
+  },
 ): Promise<bigint> {
   try {
-    return await provider.estimateGas(transaction);
+    return await client.estimateGas(transaction);
   } catch (error) {
     throw new Error(`Gas estimation failed: ${error.message}`);
   }
@@ -127,10 +229,9 @@ export async function estimateGas(
 /**
  * Get current gas price
  */
-export async function getGasPrice(provider: ethers.Provider): Promise<bigint> {
+export async function getGasPrice(client: PublicClient): Promise<bigint> {
   try {
-    const feeData = await provider.getFeeData();
-    return feeData.gasPrice || BigInt(0);
+    return await client.getGasPrice();
   } catch (error) {
     throw new Error(`Failed to get gas price: ${error.message}`);
   }
@@ -140,15 +241,15 @@ export async function getGasPrice(provider: ethers.Provider): Promise<bigint> {
  * Wait for transaction confirmation
  */
 export async function waitForTransaction(
-  provider: ethers.Provider,
-  txHash: string,
+  client: PublicClient,
+  txHash: Hex,
   confirmations: number = 1,
-): Promise<ethers.TransactionReceipt> {
+): Promise<TransactionReceipt> {
   try {
-    const receipt = await provider.waitForTransaction(txHash, confirmations);
-    if (!receipt) {
-      throw new Error('Transaction receipt not found');
-    }
+    const receipt = await client.waitForTransactionReceipt({
+      hash: txHash,
+      confirmations,
+    });
     return receipt;
   } catch (error) {
     throw new Error(`Transaction confirmation failed: ${error.message}`);
@@ -159,21 +260,30 @@ export async function waitForTransaction(
  * Parse transaction receipt for token transfers
  */
 export function parseTokenTransfers(
-  receipt: ethers.TransactionReceipt,
+  receipt: TransactionReceipt,
   tokenAddress: string,
 ): Array<{ from: string; to: string; amount: bigint }> {
-  const erc20Interface = getERC20Interface();
   const transfers: Array<{ from: string; to: string; amount: bigint }> = [];
+
+  // Find Transfer event signature
+  const transferEventSignature = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
   for (const log of receipt.logs) {
     try {
-      const parsed = erc20Interface.parseLog(log);
-      if (parsed && parsed.name === 'Transfer') {
-        const { from, to, value } = parsed.args;
+      // Check if this is a Transfer event for the specific token
+      if (
+        log.address.toLowerCase() === tokenAddress.toLowerCase() &&
+        log.topics[0] === transferEventSignature &&
+        log.topics.length >= 3
+      ) {
+        const from = `0x${log.topics[1]?.slice(26)}` as Address;
+        const to = `0x${log.topics[2]?.slice(26)}` as Address;
+        const amount = BigInt(log.data);
+
         transfers.push({
-          from: from as string,
-          to: to as string,
-          amount: value as bigint,
+          from,
+          to,
+          amount,
         });
       }
     } catch {

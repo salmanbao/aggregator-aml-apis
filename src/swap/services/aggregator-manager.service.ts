@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ZeroXService } from './aggregators/zero-x.service';
-import { SwapRequest, SwapQuote, AggregatorType } from '../models/swap-request.model';
+import { SwapRequest, SwapQuote, AggregatorType, ApprovalStrategy } from '../models/swap-request.model';
 
 /**
  * Aggregator manager service that coordinates with 0x Protocol v2
@@ -17,7 +17,7 @@ export class AggregatorManagerService {
   }
 
   /**
-   * Get quote from 0x Protocol v2
+   * Get quote from 0x Protocol v2 with approval strategy support
    */
   async getQuote(request: SwapRequest, aggregatorType?: AggregatorType): Promise<SwapQuote> {
     // Only support 0x Protocol v2
@@ -26,6 +26,18 @@ export class AggregatorManagerService {
     }
 
     return this.getQuoteFromAggregator(request, AggregatorType.ZEROX);
+  }
+
+  /**
+   * Get price from 0x Protocol v2 with approval strategy support
+   */
+  async getPrice(request: SwapRequest, aggregatorType?: AggregatorType, approvalStrategy?: ApprovalStrategy): Promise<any> {
+    // Only support 0x Protocol v2
+    if (aggregatorType && aggregatorType !== AggregatorType.ZEROX) {
+      throw new Error(`Only 0x Protocol is supported. Requested: ${aggregatorType}`);
+    }
+
+    return this.getPriceFromAggregator(request, AggregatorType.ZEROX, approvalStrategy);
   }
 
   /**
@@ -44,7 +56,43 @@ export class AggregatorManagerService {
       throw new Error(`Aggregator ${aggregatorType} does not support chain ${request.chainId}`);
     }
 
-    return aggregator.getQuote(request);
+    // Use strategy-specific method if available
+    if (request.approvalStrategy === ApprovalStrategy.ALLOWANCE_HOLDER) {
+      return aggregator.getAllowanceHolderQuote(request);
+    } else if (request.approvalStrategy === ApprovalStrategy.PERMIT2) {
+      return aggregator.getPermit2Quote(request);
+    } else {
+      // Default to permit2 for backwards compatibility
+      return aggregator.getQuote(request);
+    }
+  }
+
+  /**
+   * Get price from specific aggregator
+   */
+  private async getPriceFromAggregator(
+    request: SwapRequest,
+    aggregatorType: AggregatorType,
+    approvalStrategy?: ApprovalStrategy,
+  ): Promise<any> {
+    const aggregator = this.aggregators.get(aggregatorType);
+    if (!aggregator) {
+      throw new Error(`Unsupported aggregator: ${aggregatorType}`);
+    }
+
+    if (!aggregator.isChainSupported(request.chainId)) {
+      throw new Error(`Aggregator ${aggregatorType} does not support chain ${request.chainId}`);
+    }
+
+    // Use strategy-specific method if available
+    if (approvalStrategy === ApprovalStrategy.ALLOWANCE_HOLDER) {
+      return aggregator.getAllowanceHolderPrice(request);
+    } else if (approvalStrategy === ApprovalStrategy.PERMIT2) {
+      return aggregator.getPermit2Price(request);
+    } else {
+      // Default to permit2 for backwards compatibility
+      return aggregator.getPrice(request);
+    }
   }
 
   /**

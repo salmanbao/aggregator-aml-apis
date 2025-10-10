@@ -11,7 +11,7 @@ import { throwError } from 'rxjs';
 export class CustomHttpService {
   private readonly logger = new Logger(CustomHttpService.name);
   private readonly defaultTimeout = 30000; // 30 seconds
-  private readonly maxRetries = 0;
+  private readonly maxRetries = 3;
   private readonly retryDelay = 1000; // 1 second
 
   constructor(private readonly httpService: HttpService) {}

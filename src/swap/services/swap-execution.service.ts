@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ethers } from 'ethers';
+import { type Address, type Hex } from 'viem';
 import { WalletService } from './wallet.service';
 import { AggregatorManagerService } from './aggregator-manager.service';
 import { ApprovalService } from './approval.service';
@@ -9,16 +9,20 @@ import {
   SwapResult,
   AggregatorType,
 } from '../models/swap-request.model';
-import { isNativeToken, getNativeTokenAddress, getChainConfig } from '../../shared/utils/chain.utils';
+import { TransactionDataDto } from '../dto/allowance-holder-execute-request.dto';
+import { isNativeToken, getChainConfig } from '../../shared/utils/chain.utils';
 import {
   validatePrivateKey,
   validateTokenAddress,
-  validateWalletAddress,
   validateAmount,
   validateSlippage,
   validateDeadline,
 } from '../../shared/utils/validation.utils';
-import { createWallet } from '../../shared/utils/ethereum.utils';
+import { 
+  createViemClients, 
+  getAccountFromPrivateKey 
+} from '../../shared/utils/viem.utils';
+import type { TransactionReceipt } from 'viem';
 
 /**
  * Swap execution service with pre-flight checks
@@ -53,9 +57,8 @@ export class SwapExecutionService {
 
       // Create wallet and get address
       const chainConfig = getChainConfig(chainId);
-      const provider = new ethers.JsonRpcProvider(chainConfig.rpcUrl);
-      const wallet = new ethers.Wallet(privateKey, provider);
-      const taker = wallet.address;
+      const account = getAccountFromPrivateKey(privateKey);
+      const taker = account.address;
 
       // Set recipient to taker if not provided (ensures funds go back to same wallet)
       const finalRecipient = recipient || taker;
@@ -147,10 +150,10 @@ export class SwapExecutionService {
       this.logger.error(`Failed to execute swap: ${error.message}`, error.stack);
       
       // Provide more specific error messages
-      if (error.message.includes('insufficient funds')) {
-        throw new Error('Insufficient funds for transaction (including gas)');
+      if (error.message.includes('Insufficient funds') || error.message.includes('insufficient funds')) {
+        throw new Error('Insufficient funds for transaction. Please check your wallet balance.');
       } else if (error.message.includes('gas')) {
-        throw new Error('Transaction failed due to gas issues');
+        throw new Error('Gas estimation failed. The transaction may fail or gas limit may be too low.');
       } else if (error.message.includes('slippage')) {
         throw new Error('Transaction failed due to slippage tolerance exceeded');
       } else if (error.message.includes('deadline')) {
@@ -226,7 +229,7 @@ export class SwapExecutionService {
 
     if (availableBalance < requiredAmount) {
       throw new Error(
-        `Insufficient balance. Required: ${request.sellAmount}, Available: ${balance.balance}`,
+        `Insufficient funds. Required: ${request.sellAmount}, Available: ${balance.balance}`,
       );
     }
 
@@ -238,7 +241,7 @@ export class SwapExecutionService {
 
       if (availableBalance < requiredAmount + gasCost) {
         throw new Error(
-          `Insufficient balance for gas. Required: ${request.sellAmount}, Gas cost: ${gasCost}, Available: ${balance.balance}`,
+          `Insufficient funds for gas. Required: ${request.sellAmount}, Gas cost: ${gasCost}, Available: ${balance.balance}`,
         );
       }
     }
@@ -299,13 +302,12 @@ export class SwapExecutionService {
     }
 
     const chainConfig = getChainConfig(chainId);
-    const provider = new ethers.JsonRpcProvider(chainConfig.rpcUrl);
-    const wallet = new ethers.Wallet(privateKey, provider);
+    const account = getAccountFromPrivateKey(privateKey);
 
     const isApprovalNeeded = await this.approvalService.isApprovalNeeded(
       chainId,
       sellToken,
-      wallet.address,
+      account.address,
       quote.allowanceTarget,
       quote.sellAmount,
     );
@@ -344,13 +346,13 @@ export class SwapExecutionService {
    * Parse swap result from transaction receipt
    */
   private async parseSwapResult(
-    receipt: ethers.TransactionReceipt,
+    receipt: TransactionReceipt,
     quote: SwapQuote,
     txHash: string,
     recipient: string,
   ): Promise<SwapResult> {
     const gasUsed = receipt.gasUsed.toString();
-    const gasPrice = receipt.gasPrice?.toString() || '0';
+    const gasPrice = receipt.effectiveGasPrice?.toString() || '0';
 
     // Parse token transfers to get actual buy amount
     const transfers = this.walletService.parseTransactionReceipt(receipt, quote.buyToken);
@@ -406,6 +408,135 @@ export class SwapExecutionService {
     } catch (error) {
       this.logger.error(`Failed to get swap quote: ${error.message}`, error.stack);
       throw new Error(`Failed to get swap quote: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute AllowanceHolder swap transaction
+   * Takes transaction data from allowance-holder/quote and executes it
+   */
+  async executeAllowanceHolderSwap(
+    chainId: number,
+    privateKey: string,
+    transaction: TransactionDataDto,
+    metadata?: {
+      sellToken?: string;
+      buyToken?: string;
+      sellAmount?: string;
+      buyAmount?: string;
+    }
+  ): Promise<{
+    transactionHash: string;
+    chainId: number;
+    from: string;
+    to: string;
+    value: string;
+    gasUsed?: string;
+    gasPrice?: string;
+    status: string;
+    blockNumber?: number;
+    blockHash?: string;
+    sellToken?: string;
+    buyToken?: string;
+    sellAmount?: string;
+    buyAmount?: string;
+  }> {
+    try {
+      this.logger.log(`Executing AllowanceHolder swap on chain ${chainId}`);
+
+      // Validate inputs
+      validatePrivateKey(privateKey);
+      
+      if (!transaction?.to || !transaction?.data) {
+        throw new Error('Invalid transaction data: missing to or data fields');
+      }
+
+      // Get chain configuration and create clients
+      const { walletClient, publicClient, chain } = createViemClients(chainId, privateKey);
+      if (!walletClient) {
+        throw new Error('Failed to create wallet client');
+      }
+
+      const account = getAccountFromPrivateKey(privateKey);
+
+      this.logger.debug('Sending AllowanceHolder swap transaction', {
+        to: transaction.to,
+        value: transaction.value,
+        dataLength: transaction.data.length,
+        from: account.address,
+        chainId,
+      });
+
+      // Send transaction
+      const txHash = await walletClient.sendTransaction({
+        account: account,
+        to: transaction.to as Address,
+        data: transaction.data as Hex,
+        value: transaction.value ? BigInt(transaction.value) : 0n,
+        gas: transaction.gas ? BigInt(transaction.gas) : undefined,
+        gasPrice: transaction.gasPrice ? BigInt(transaction.gasPrice) : undefined,
+        chain: chain,
+      });
+
+      this.logger.log(`AllowanceHolder swap transaction sent: ${txHash}`);
+
+      // Wait for transaction confirmation
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: txHash,
+        timeout: 300000, // 5 minutes timeout
+      });
+
+      this.logger.log(`AllowanceHolder swap confirmed in block ${receipt.blockNumber}`);
+
+      // Prepare response
+      const result = {
+        transactionHash: txHash,
+        chainId,
+        from: account.address,
+        to: transaction.to,
+        value: transaction.value || '0',
+        gasUsed: receipt.gasUsed.toString(),
+        gasPrice: receipt.effectiveGasPrice?.toString(),
+        status: receipt.status === 'success' ? 'success' : 'failed',
+        blockNumber: Number(receipt.blockNumber),
+        blockHash: receipt.blockHash,
+        sellToken: metadata?.sellToken,
+        buyToken: metadata?.buyToken,
+        sellAmount: metadata?.sellAmount,
+        buyAmount: metadata?.buyAmount,
+      };
+
+      if (receipt.status !== 'success') {
+        this.logger.error('AllowanceHolder swap transaction failed', result);
+        throw new Error(`Transaction failed: ${txHash}`);
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`Failed to execute AllowanceHolder swap: ${error.message}`, {
+        error: error.stack,
+        chainId,
+        transaction: {
+          to: transaction?.to,
+          value: transaction?.value,
+          dataLength: transaction?.data?.length,
+        },
+        metadata,
+      });
+
+      // Re-throw with more context
+      if (error.message.includes('Insufficient funds') || error.message.includes('insufficient funds')) {
+        throw new Error('Insufficient funds for transaction. Please check your wallet balance.');
+      } else if (error.message.includes('gas')) {
+        throw new Error('Gas estimation failed. The transaction may fail or gas limit may be too low.');
+      } else if (error.message.includes('nonce')) {
+        throw new Error('Transaction nonce issue. Please try again.');
+      } else if (error.message.includes('replacement')) {
+        throw new Error('Transaction replacement issue. Please wait for pending transactions to complete.');
+      } else {
+        throw new Error(`AllowanceHolder swap execution failed: ${error.message}`);
+      }
     }
   }
 }

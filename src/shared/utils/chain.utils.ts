@@ -28,7 +28,7 @@ export const CHAIN_CONFIGS: Record<SupportedChain, ChainConfig> = {
   [SupportedChain.ETHEREUM]: {
     chainId: 1,
     name: 'Ethereum',
-    rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
+    rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://restless-ancient-mound.quiknode.pro/20fb2886d7e437de345ce39e98151180241816af/',
     nativeCurrency: {
       name: 'Ether',
       symbol: 'ETH',

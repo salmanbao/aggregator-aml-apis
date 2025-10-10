@@ -2,6 +2,14 @@
  * Models for swap operations
  */
 
+/**
+ * Approval strategy types for 0x Protocol v2
+ */
+export enum ApprovalStrategy {
+  ALLOWANCE_HOLDER = 'allowance-holder', // Recommended: Single signature, better UX
+  PERMIT2 = 'permit2' // Advanced: Double signature, time-limited approvals
+}
+
 export interface SwapRequest {
   chainId: number;
   sellToken: string;
@@ -12,6 +20,7 @@ export interface SwapRequest {
   slippagePercentage?: number;
   deadline?: number;
   aggregator?: AggregatorType;
+  approvalStrategy?: ApprovalStrategy; // Optional strategy for 0x v2
 }
 
 export interface SwapQuote {
@@ -29,6 +38,19 @@ export interface SwapQuote {
   aggregator: AggregatorType;
   priceImpact?: string;
   estimatedGas?: string;
+  permit2?: Permit2Data; // Optional permit2 data for gasless approvals (Permit2 strategy only)
+  approvalStrategy?: ApprovalStrategy; // Strategy used for this quote
+}
+
+export interface Permit2Data {
+  type: string;
+  hash: string;
+  eip712: {
+    types: Record<string, any>;
+    domain: Record<string, any>;
+    message: Record<string, any>;
+    primaryType: string;
+  };
 }
 
 export interface SwapTransaction {

@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { AggregatorManagerService } from './aggregator-manager.service';
 import { Permit2Service } from './permit2.service';
-import { ApprovalRequest, ApprovalResult, AggregatorType } from '../models/swap-request.model';
+import { ApprovalResult, AggregatorType } from '../models/swap-request.model';
 import { isNativeToken } from '../../shared/utils/chain.utils';
 import { validatePrivateKey, validateTokenAddress, validateWalletAddress } from '../../shared/utils/validation.utils';
 
@@ -56,6 +56,12 @@ export class ApprovalService {
       return currentAllowanceBigInt < requiredAmount;
     } catch (error) {
       this.logger.error(`Failed to check approval status: ${error.message}`, error.stack);
+      
+      // Check if it's a validation error
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
       throw new Error(`Failed to check approval status: ${error.message}`);
     }
   }
@@ -68,28 +74,81 @@ export class ApprovalService {
     tokenAddress: string,
     owner: string,
     spender: string,
+    amount?: string,
   ): Promise<{
     currentAllowance: string;
     isApprovalNeeded: boolean;
     tokenInfo: any;
+    isPermit2Compatible?: boolean;
+    permit2Address?: string;
   }> {
     try {
+      // Validate inputs
+      if (!chainId || chainId <= 0) {
+        throw new Error('Invalid chain ID');
+      }
       validateTokenAddress(tokenAddress);
       validateWalletAddress(owner);
       validateWalletAddress(spender);
+
+      // Native tokens don't need approval
+      if (isNativeToken(tokenAddress)) {
+        return {
+          currentAllowance: '0',
+          isApprovalNeeded: false,
+          tokenInfo: null,
+          isPermit2Compatible: false,
+        };
+      }
 
       const [currentAllowance, tokenInfo] = await Promise.all([
         this.walletService.getAllowance(chainId, tokenAddress, owner, spender),
         this.walletService.getTokenInfo(chainId, tokenAddress),
       ]);
 
+      // Check Permit2 compatibility
+      let isPermit2Compatible = false;
+      let permit2Address: string | undefined;
+      
+      if (this.permit2Service.isPermit2Supported(chainId)) {
+        try {
+          isPermit2Compatible = await this.permit2Service.isTokenPermit2Compatible(chainId, tokenAddress);
+          if (isPermit2Compatible) {
+            permit2Address = this.permit2Service.getPermit2Address(chainId);
+          }
+        } catch (error) {
+          this.logger.warn(`Failed to check Permit2 compatibility: ${error.message}`);
+        }
+      }
+
+      // Determine if approval is needed
+      let isApprovalNeeded = false;
+      
+      if (amount) {
+        // If amount is provided, check if current allowance is sufficient
+        const requiredAmount = BigInt(amount);
+        const currentAllowanceBigInt = BigInt(currentAllowance);
+        isApprovalNeeded = currentAllowanceBigInt < requiredAmount;
+      } else {
+        // If no amount provided, approval is needed if allowance is 0
+        isApprovalNeeded = BigInt(currentAllowance) === BigInt(0);
+      }
+
       return {
         currentAllowance,
-        isApprovalNeeded: !isNativeToken(tokenAddress) && BigInt(currentAllowance) > BigInt(0),
+        isApprovalNeeded,
         tokenInfo,
+        isPermit2Compatible,
+        permit2Address,
       };
     } catch (error) {
       this.logger.error(`Failed to get approval status: ${error.message}`, error.stack);
+      
+      // Check if it's a validation error
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
       throw new Error(`Failed to get approval status: ${error.message}`);
     }
   }
@@ -132,6 +191,12 @@ export class ApprovalService {
       };
     } catch (error) {
       this.logger.error(`Failed to execute approval: ${error.message}`, error.stack);
+      
+      // Check if it's a validation error
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
       throw new Error(`Failed to execute approval: ${error.message}`);
     }
   }
@@ -285,16 +350,16 @@ export class ApprovalService {
         throw new Error(`Token ${tokenAddress} is not Permit2 compatible`);
       }
 
-      return await this.permit2Service.createPermit2Signature(
-        chainId,
-        privateKey,
-        tokenAddress,
-        spender,
-        amount,
-        deadline,
-      );
+      // Permit2 signatures temporarily disabled during migration
+      throw new Error('Permit2 signatures temporarily disabled. Use standard ERC-20 approvals or new permit2 workflow service.');
     } catch (error) {
       this.logger.error(`Failed to create Permit2 signature: ${error.message}`, error.stack);
+      
+      // Check if it's a validation error
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
       throw new Error(`Failed to create Permit2 signature: ${error.message}`);
     }
   }
@@ -320,5 +385,25 @@ export class ApprovalService {
       this.logger.error(`Failed to check Permit2 availability: ${error.message}`, error.stack);
       return false;
     }
+  }
+
+  /**
+   * Check if an error is a validation error (should return 400 status)
+   */
+  private isValidationError(error: any): boolean {
+    const validationErrorMessages = [
+      'Invalid chain ID',
+      'Invalid token address',
+      'Invalid wallet address',
+      'Invalid private key',
+      'Cannot approve native token',
+      'Cannot create Permit2 signature for native token',
+      'Permit2 not supported',
+      'not Permit2 compatible',
+    ];
+    
+    return validationErrorMessages.some(msg => 
+      error?.message?.includes(msg)
+    );
   }
 }

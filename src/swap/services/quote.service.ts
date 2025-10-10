@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { AggregatorManagerService } from './aggregator-manager.service';
-import { SwapRequest, SwapQuote, AggregatorType } from '../models/swap-request.model';
+import { SwapRequest, SwapQuote, AggregatorType, ApprovalStrategy } from '../models/swap-request.model';
 import {
   validateChainId,
   validateTokenAddress,
@@ -32,6 +32,7 @@ export class QuoteService {
     slippagePercentage?: number,
     deadline?: number,
     aggregatorType?: AggregatorType,
+    approvalStrategy?: ApprovalStrategy,
   ): Promise<SwapQuote> {
     try {
       // Validate inputs
@@ -56,6 +57,7 @@ export class QuoteService {
         slippagePercentage,
         deadline,
         aggregator: aggregatorType,
+        approvalStrategy, // Include approval strategy
       };
 
       // Get quote from aggregator
@@ -265,6 +267,67 @@ export class QuoteService {
    */
   isAggregatorSupported(chainId: number, aggregatorType: AggregatorType): boolean {
     return this.aggregatorManager.isAggregatorSupported(chainId, aggregatorType);
+  }
+
+  /**
+   * Get price quote (indicative pricing without transaction data)
+   */
+  async getPrice(
+    chainId: number,
+    sellToken: string,
+    buyToken: string,
+    sellAmount: string,
+    taker: string,
+    recipient?: string,
+    slippagePercentage?: number,
+    deadline?: number,
+    aggregatorType?: AggregatorType,
+    approvalStrategy?: ApprovalStrategy,
+  ): Promise<any> {
+    try {
+      // Validate inputs
+      this.validateQuoteInputs(
+        chainId,
+        sellToken,
+        buyToken,
+        sellAmount,
+        taker,
+        slippagePercentage,
+        deadline,
+      );
+
+      // Build swap request
+      const swapRequest: SwapRequest = {
+        chainId,
+        sellToken,
+        buyToken,
+        sellAmount,
+        taker,
+        recipient: recipient || taker,
+        slippagePercentage,
+        deadline,
+        aggregator: aggregatorType,
+        approvalStrategy,
+      };
+
+      // Get price from aggregator
+      const price = await this.aggregatorManager.getPrice(swapRequest, aggregatorType, approvalStrategy);
+
+      this.logger.log(
+        `Price obtained: ${price.sellAmount} ${price.sellToken} -> ${price.buyAmount} ${price.buyToken}`,
+      );
+
+      return price;
+    } catch (error) {
+      this.logger.error(`Failed to get price: ${error.message}`, error.stack);
+      
+      // If it's a validation error, throw BadRequestException
+      if (this.isValidationError(error)) {
+        throw new BadRequestException(error.message);
+      }
+      
+      throw new Error(`Failed to get price: ${error.message}`);
+    }
   }
 
   /**

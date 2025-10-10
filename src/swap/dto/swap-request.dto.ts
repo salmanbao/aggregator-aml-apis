@@ -1,7 +1,7 @@
 import { IsString, IsNumber, IsOptional, IsEnum, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AggregatorType } from '../models/swap-request.model';
+import { AggregatorType, ApprovalStrategy } from '../models/swap-request.model';
 
 /**
  * DTO for swap quote request
@@ -17,14 +17,14 @@ export class SwapQuoteRequestDto {
 
   @ApiProperty({
     description: 'Token address to sell (use 0x0000000000000000000000000000000000000000 for native token)',
-    example: '0xA0b86a33E6441b8c4C8C0e1c7B4b4b4b4b4b4b4b',
+    example: '0x514910771AF9Ca656af840dff83E8264EcF986CA',
   })
   @IsString()
   sellToken: string;
 
   @ApiProperty({
     description: 'Token address to buy (use 0x0000000000000000000000000000000000000000 for native token)',
-    example: '0xB0b86a33E6441b8c4C8C0e1c7B4b4b4b4b4b4b4b',
+    example: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
   })
   @IsString()
   buyToken: string;
@@ -38,14 +38,14 @@ export class SwapQuoteRequestDto {
 
   @ApiProperty({
     description: 'Wallet address that will execute the swap',
-    example: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6',
+    example: '0x9C30214BeBfC3cD36aA4A11a9540e019f2951c5C',
   })
   @IsString()
   taker: string;
 
   @ApiPropertyOptional({
     description: 'Recipient address (defaults to taker if not provided)',
-    example: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6',
+    example: '0x9C30214BeBfC3cD36aA4A11a9540e019f2951c5C',
   })
   @IsOptional()
   @IsString()
@@ -81,6 +81,15 @@ export class SwapQuoteRequestDto {
   @IsOptional()
   @IsEnum(AggregatorType)
   aggregator?: AggregatorType;
+
+  @ApiPropertyOptional({
+    description: 'Approval strategy for 0x Protocol v2 (AllowanceHolder recommended, Permit2 for advanced use)',
+    enum: ApprovalStrategy,
+    example: ApprovalStrategy.ALLOWANCE_HOLDER,
+  })
+  @IsOptional()
+  @IsEnum(ApprovalStrategy)
+  approvalStrategy?: ApprovalStrategy;
 }
 
 /**
@@ -97,14 +106,14 @@ export class SwapExecutionRequestDto {
 
   @ApiProperty({
     description: 'Token address to sell',
-    example: '0xA0b86a33E6441b8c4C8C0e1c7B4b4b4b4b4b4b4b',
+    example: '0x514910771AF9Ca656af840dff83E8264EcF986CA',
   })
   @IsString()
   sellToken: string;
 
   @ApiProperty({
     description: 'Token address to buy',
-    example: '0xB0b86a33E6441b8c4C8C0e1c7B4b4b4b4b4b4b4b',
+    example: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
   })
   @IsString()
   buyToken: string;
@@ -125,7 +134,7 @@ export class SwapExecutionRequestDto {
 
   @ApiPropertyOptional({
     description: 'Recipient address (defaults to wallet address if not provided)',
-    example: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6',
+    example: '0x9C30214BeBfC3cD36aA4A11a9540e019f2951c5C',
   })
   @IsOptional()
   @IsString()
