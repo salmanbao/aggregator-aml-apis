@@ -1,28 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type Address, type Hex } from 'viem';
-import { WalletService } from './wallet.service';
-import { AggregatorManagerService } from './aggregator-manager.service';
-import { ApprovalService } from './approval.service';
 import {
   SwapRequest,
   SwapQuote,
   SwapResult,
   AggregatorType,
-} from '../models/swap-request.model';
-import { TransactionDataDto } from '../dto/allowance-holder-execute-request.dto';
-import { isNativeToken, getChainConfig } from '../../shared/utils/chain.utils';
+} from '@swap/models/swap-request.model';
+import { TransactionDataDto } from '@swap/dto/allowance-holder-execute-request.dto';
+import { isNativeToken, getChainConfig } from '@shared/utils/chain.utils';
 import {
   validatePrivateKey,
   validateTokenAddress,
   validateAmount,
   validateSlippage,
   validateDeadline,
-} from '../../shared/utils/validation.utils';
+} from '@shared/utils/validation.utils';
 import { 
   createViemClients, 
   getAccountFromPrivateKey 
-} from '../../shared/utils/viem.utils';
+} from '@shared/utils/viem.utils';
 import type { TransactionReceipt } from 'viem';
+import { WalletService } from '@swap/services/blockchain/wallet/wallet.service';
+import { AggregatorManagerService } from '../aggregation/aggregator-manager.service';
+import { ApprovalService } from '@swap/services/blockchain/approval/approval.service';
 
 /**
  * Swap execution service with pre-flight checks

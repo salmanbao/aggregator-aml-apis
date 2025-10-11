@@ -74,7 +74,7 @@ export class SwapQuoteRequestDto {
   deadline?: number;
 
   @ApiPropertyOptional({
-    description: 'Preferred aggregator to use',
+    description: 'Preferred aggregator to use (0x, 1inch, velora, odos, kyberswap, jupiter)',
     enum: AggregatorType,
     example: AggregatorType.ZEROX,
   })
@@ -85,7 +85,7 @@ export class SwapQuoteRequestDto {
   @ApiPropertyOptional({
     description: 'Approval strategy for 0x Protocol v2 (AllowanceHolder recommended, Permit2 for advanced use)',
     enum: ApprovalStrategy,
-    example: ApprovalStrategy.ALLOWANCE_HOLDER,
+    example: ApprovalStrategy.PERMIT2,
   })
   @IsOptional()
   @IsEnum(ApprovalStrategy)
@@ -163,7 +163,7 @@ export class SwapExecutionRequestDto {
   deadline?: number;
 
   @ApiPropertyOptional({
-    description: 'Preferred aggregator to use',
+    description: 'Preferred aggregator to use (0x, 1inch, velora, odos, kyberswap, jupiter)',
     enum: AggregatorType,
     example: AggregatorType.ZEROX,
   })

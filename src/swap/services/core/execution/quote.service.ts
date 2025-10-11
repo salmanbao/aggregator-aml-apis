@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { AggregatorManagerService } from './aggregator-manager.service';
-import { SwapRequest, SwapQuote, AggregatorType, ApprovalStrategy } from '../models/swap-request.model';
+import { AggregatorManagerService } from '../aggregation/aggregator-manager.service';
+import { SwapRequest, SwapQuote, AggregatorType, ApprovalStrategy } from '@swap/models/swap-request.model';
 import {
   validateChainId,
   validateTokenAddress,
@@ -8,7 +8,7 @@ import {
   validateAmount,
   validateSlippage,
   validateDeadline,
-} from '../../shared/utils/validation.utils';
+} from '@shared/utils/validation.utils';
 
 /**
  * Quote service for getting swap quotes from aggregators

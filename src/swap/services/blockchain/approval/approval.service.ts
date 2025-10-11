@@ -1,10 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { WalletService } from './wallet.service';
-import { AggregatorManagerService } from './aggregator-manager.service';
+import { WalletService } from '@swap/services/blockchain/wallet/wallet.service';
+import { AggregatorManagerService } from '@swap/services/core/aggregation/aggregator-manager.service';
 import { Permit2Service } from './permit2.service';
-import { ApprovalResult, AggregatorType } from '../models/swap-request.model';
-import { isNativeToken } from '../../shared/utils/chain.utils';
-import { validatePrivateKey, validateTokenAddress, validateWalletAddress } from '../../shared/utils/validation.utils';
+import { ApprovalResult, AggregatorType } from '@swap/models/swap-request.model';
+import { isNativeToken } from '@shared/utils/chain.utils';
+import { validatePrivateKey, validateTokenAddress, validateWalletAddress } from '@shared/utils/validation.utils';
 
 /**
  * Approval service for handling ERC-20 token approvals

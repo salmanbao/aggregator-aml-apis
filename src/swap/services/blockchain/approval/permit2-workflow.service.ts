@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Permit2Service } from './permit2.service';
-import { SwapQuote, Permit2Data } from '../models/swap-request.model';
+import { SwapQuote, Permit2Data } from '@swap/models/swap-request.model';
 
 /**
  * Permit2 workflow service for demonstrating gasless approval flow

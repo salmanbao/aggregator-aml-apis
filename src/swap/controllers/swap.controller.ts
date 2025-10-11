@@ -19,12 +19,12 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { QuoteService } from '../services/quote.service';
-import { SwapExecutionService } from '../services/swap-execution.service';
-import { ApprovalService } from '../services/approval.service';
-import { WalletService } from '../services/wallet.service';
-import { TransactionParserService } from '../services/transaction-parser.service';
-import { Permit2WorkflowService } from '../services/permit2-workflow.service';
+import { QuoteService } from '@swap/services/core/execution/quote.service';
+import { SwapExecutionService } from '@swap/services/core/execution/swap-execution.service';
+import { ApprovalService } from '@swap/services/blockchain/approval/approval.service';
+import { WalletService } from '@swap/services/blockchain/wallet/wallet.service';
+import { TransactionParserService } from '@swap/services/blockchain/analysis/transaction-parser.service';
+import { Permit2WorkflowService } from '@swap/services/blockchain/approval/permit2-workflow.service';
 import { SwapQuoteRequestDto, SwapExecutionRequestDto } from '../dto/swap-request.dto';
 import { ApprovalRequestDto, ApprovalStatusRequestDto } from '../dto/approval-request.dto';
 import { BalanceRequestDto, MultiBalanceRequestDto } from '../dto/balance-request.dto';

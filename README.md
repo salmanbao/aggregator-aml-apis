@@ -1011,21 +1011,44 @@ Once running, visit `http://localhost:3000/api` for interactive Swagger document
 
 ## Architecture
 
+### Provider Ports Pattern
+
+This project implements a **Layered Architecture** with **Provider Ports** pattern for maximum extensibility:
+
+**Provider Categories**:
+- **EVM Aggregators** (`IOnchainAggregator`): 0x, 1inch, Odos, ParaSwap
+- **Meta Aggregators** (`IMetaAggregator`): LI.FI, Socket, Rango  
+- **Solana Routers** (`ISolanaRouter`): Jupiter, Orca, Raydium
+- **Native L1 Routers** (`INativeRouter`): THORChain, Maya
+
 ```
 src/
-├── swap/                 # Main swap functionality
-│   ├── controllers/      # API endpoints (strategy-based routing)
-│   ├── services/         # Business logic implementation
-│   │   ├── aggregators/  # 0x Protocol integration
-│   │   ├── permit2/      # Permit2 workflow handling
-│   │   └── ...          # Core swap services
-│   ├── dto/             # Request/response validation
-│   └── models/          # Data models and interfaces
-├── shared/              # Shared utilities and services
-│   ├── services/        # HTTP and utility services
-│   └── utils/           # Viem, validation, and error handling
-└── core/                # Application core (filters, guards, interceptors)
+├── swap/                    # Main swap functionality
+│   ├── controllers/         # API endpoints with enhanced error handling
+│   ├── services/            # Business logic implementation
+│   │   ├── providers/       # Provider implementations by category
+│   │   │   ├── evm-aggregators/    # 0x, 1inch, Odos
+│   │   │   ├── meta/               # LI.FI, Socket, Rango
+│   │   │   ├── solana/             # Jupiter, Orca, Raydium
+│   │   │   └── native-l1/          # THORChain, Maya
+│   │   ├── enhanced-aggregator-manager.service.ts  # Multi-provider orchestration
+│   │   └── ...              # Core swap services
+│   ├── models/              # Data models and port interfaces
+│   │   └── ports.ts         # Provider interface definitions
+│   └── dto/                 # Request/response validation
+├── shared/                  # Shared utilities and services
+│   ├── services/            # HTTP and utility services
+│   └── utils/               # Viem, validation, and error handling
+└── core/                    # Application core (filters, guards, interceptors)
 ```
+
+**Enhanced Features**:
+- Health monitoring with intelligent routing
+- Automatic fallback on provider failures  
+- Multi-provider quote aggregation
+- Provider-specific configurations and rate limiting
+
+**📚 Complete Provider Documentation**: [PROVIDER_PORTS_ARCHITECTURE.md](./PROVIDER_PORTS_ARCHITECTURE.md)
 
 ## Contributing
 
@@ -1034,6 +1057,12 @@ src/
 3. Make your changes
 4. Add tests for new functionality
 5. Submit a pull request
+
+## Documentation
+
+- **[Complete Codebase Documentation](./CODEBASE_DOCUMENTATION.md)** - Comprehensive technical documentation for developers
+- **[Integration Guide](./README.md#allowanceholder-integration-guide-for-backend-developers)** - Backend integration examples
+- **[API Documentation](http://localhost:3000/api)** - Interactive Swagger documentation
 
 ## License
 

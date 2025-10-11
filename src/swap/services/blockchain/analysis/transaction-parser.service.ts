@@ -1,8 +1,8 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { parseSwap } from '@0x/0x-parser';
 import { formatUnits, isAddress } from 'viem';
-import { TransactionParseRequestDto, TransactionParseResponseDto } from '../dto/transaction-parse-request.dto';
-import { createViemPublicClient } from '../../shared/utils/viem.utils';
+import { TransactionParseRequestDto, TransactionParseResponseDto } from '@swap/dto/transaction-parse-request.dto';
+import { createViemPublicClient } from '@shared/utils/viem.utils';
 
 @Injectable()
 export class TransactionParserService {

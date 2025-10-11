@@ -3,15 +3,15 @@ import {
   getContract,
   type Address,
 } from 'viem';
-import { ERC20_ABI } from '../../shared/utils/ethereum.utils';
+import { ERC20_ABI } from '@shared/utils/ethereum.utils';
 import { 
   createViemClients, 
   getAccountFromPrivateKey 
-} from '../../shared/utils/viem.utils';
+} from '@shared/utils/viem.utils';
 import { 
   executeWithErrorHandling, 
   type ErrorContext 
-} from '../../shared/utils/error-handling.utils';
+} from '@shared/utils/error-handling.utils';
 
 /**
  * Permit2 service for handling gasless approvals with 0x Protocol v2

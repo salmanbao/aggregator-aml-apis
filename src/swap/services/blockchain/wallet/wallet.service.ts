@@ -6,23 +6,20 @@ import {
   getContract, 
   formatEther, 
   formatUnits, 
-  parseEther,
-  type PublicClient,
-  type WalletClient,
   type Address,
   type Hex,
   type TransactionReceipt
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { getChainConfig, isNativeToken } from '../../shared/utils/chain.utils';
+import { getChainConfig, isNativeToken } from '@shared/utils/chain.utils';
 import {
   createProvider,
   ERC20_ABI,
   waitForTransaction,
   parseTokenTransfers,
-} from '../../shared/utils/ethereum.utils';
-import { BalanceInfo, TokenInfo } from '../models/swap-request.model';
-import { validateWalletAddress,validatePrivateKey } from '../../shared/utils/validation.utils';
+} from '@shared/utils/ethereum.utils';
+import { BalanceInfo, TokenInfo } from '@swap/models/swap-request.model';
+import { validateWalletAddress,validatePrivateKey } from '@shared/utils/validation.utils';
 
 /**
  * Wallet service for handling blockchain transactions

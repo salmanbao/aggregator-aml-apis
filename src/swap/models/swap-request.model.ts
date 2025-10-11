@@ -89,8 +89,26 @@ export interface ApprovalResult {
   timestamp: number;
 }
 
+/**
+ * Supported aggregator types for multi-protocol swapping
+ * 
+ * EVM Aggregators:
+ * - ZEROX: 0x Protocol v2 (AllowanceHolder + Permit2 strategies)
+ * - ONEINCH: 1inch v5 DEX aggregator
+ * - VELORA: Velora smart routing
+ * - ODOS: Odos efficient pathfinding
+ * - KYBERSWAP: KyberSwap aggregated liquidity
+ * 
+ * Cross-Protocol:
+ * - JUPITER: Jupiter (Solana ecosystem)
+ */
 export enum AggregatorType {
-  ZEROX = '0x',
+  ZEROX = '0x',          // 0x Protocol (existing - do not change)
+  ONEINCH = '1inch',     // 1inch v5 aggregator
+  VELORA = 'velora',     // Velora DEX aggregator
+  ODOS = 'odos',         // Odos smart order routing
+  KYBERSWAP = 'kyberswap', // KyberSwap DEX aggregator
+  JUPITER = 'jupiter',   // Jupiter (Solana) aggregator
 }
 
 export interface AggregatorConfig {

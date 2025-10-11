@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ZeroXService } from './aggregators/zero-x.service';
-import { SwapRequest, SwapQuote, AggregatorType, ApprovalStrategy } from '../models/swap-request.model';
+import { ZeroXService } from '@swap/services/providers/evm-aggregators/zero-x.service';
+import { SwapRequest, SwapQuote, AggregatorType, ApprovalStrategy } from '@swap/models/swap-request.model';
 
 /**
  * Aggregator manager service that coordinates with 0x Protocol v2
@@ -52,7 +52,7 @@ export class AggregatorManagerService {
       throw new Error(`Unsupported aggregator: ${aggregatorType}`);
     }
 
-    if (!aggregator.isChainSupported(request.chainId)) {
+    if (!aggregator.supportsChain(request.chainId)) {
       throw new Error(`Aggregator ${aggregatorType} does not support chain ${request.chainId}`);
     }
 
@@ -80,7 +80,7 @@ export class AggregatorManagerService {
       throw new Error(`Unsupported aggregator: ${aggregatorType}`);
     }
 
-    if (!aggregator.isChainSupported(request.chainId)) {
+    if (!aggregator.supportsChain(request.chainId)) {
       throw new Error(`Aggregator ${aggregatorType} does not support chain ${request.chainId}`);
     }
 
@@ -106,7 +106,7 @@ export class AggregatorManagerService {
       throw new Error('0x Protocol service not available');
     }
 
-    if (!aggregator.isChainSupported(request.chainId)) {
+    if (!aggregator.supportsChain(request.chainId)) {
       throw new Error(`0x Protocol does not support chain ${request.chainId}`);
     }
 
@@ -133,7 +133,7 @@ export class AggregatorManagerService {
       throw new Error('0x Protocol service not available');
     }
 
-    if (!aggregator.isChainSupported(chainId)) {
+    if (!aggregator.supportsChain(chainId)) {
       throw new Error(`0x Protocol does not support chain ${chainId}`);
     }
 
@@ -153,7 +153,7 @@ export class AggregatorManagerService {
       throw new Error('0x Protocol service not available');
     }
 
-    if (!aggregator.isChainSupported(chainId)) {
+    if (!aggregator.supportsChain(chainId)) {
       throw new Error(`0x Protocol does not support chain ${chainId}`);
     }
 
@@ -165,7 +165,7 @@ export class AggregatorManagerService {
    */
   getSupportedAggregators(chainId: number): AggregatorType[] {
     const aggregator = this.aggregators.get(AggregatorType.ZEROX);
-    if (aggregator && aggregator.isChainSupported(chainId)) {
+    if (aggregator && aggregator.supportsChain(chainId)) {
       this.logger.log(`Aggregator ${AggregatorType.ZEROX} is supported for chain ${chainId}`);
       return [AggregatorType.ZEROX];
     }
@@ -182,6 +182,6 @@ export class AggregatorManagerService {
     }
 
     const aggregator = this.aggregators.get(AggregatorType.ZEROX);
-    return aggregator ? aggregator.isChainSupported(chainId) : false;
+    return aggregator ? aggregator.supportsChain(chainId) : false;
   }
 }

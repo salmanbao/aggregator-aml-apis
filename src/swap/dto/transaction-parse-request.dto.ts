@@ -7,7 +7,7 @@ import { IsString, IsNotEmpty, IsOptional, IsNumber, Min, Max } from 'class-vali
 export class TransactionParseRequestDto {
   @ApiProperty({
     description: 'Transaction hash to parse',
-    example: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    example: '0x2fc205711fc933ef6e5bcc0bf6e6a9bfc220b2d8073aea4f41305882f485669d',
   })
   @IsString()
   @IsNotEmpty()
@@ -31,7 +31,7 @@ export class TransactionParseRequestDto {
 export class TransactionParseResponseDto {
   @ApiProperty({
     description: 'Transaction hash',
-    example: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    example: '0x2fc205711fc933ef6e5bcc0bf6e6a9bfc220b2d8073aea4f41305882f485669d',
   })
   transactionHash: string;
 

@@ -24,6 +24,9 @@ export interface ChainConfig {
   blockExplorer: string;
 }
 
+export const NATIVE_TOKEN_ADDRESS = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+export const USDT_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+
 export const CHAIN_CONFIGS: Record<SupportedChain, ChainConfig> = {
   [SupportedChain.ETHEREUM]: {
     chainId: 1,
